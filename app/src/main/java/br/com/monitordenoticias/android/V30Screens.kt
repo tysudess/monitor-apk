@@ -1,0 +1,1102 @@
+package br.com.monitordenoticias.android
+
+import android.content.Context
+import android.content.Intent
+import android.net.Uri
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.outlined.*
+import androidx.compose.material3.*
+import androidx.compose.runtime.*
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.delay
+import java.text.SimpleDateFormat
+import java.util.Date
+import java.util.Locale
+
+private val V30Bg = Color(0xFF07111F)
+private val V30Surface = Color(0xFF0C1828)
+private val V30Surface2 = Color(0xFF12243A)
+private val V30Selected = Color(0xFF153B60)
+private val V30Accent = Color(0xFF58A6FF)
+private val V30Mint = Color(0xFF35CFA0)
+private val V30Amber = Color(0xFFF0B35D)
+private val V30Purple = Color(0xFF9B8CFF)
+private val V30Red = Color(0xFFFF6B7A)
+private val V30Text2 = Color(0xFF9FB0C5)
+private val V30Divider = Color(0xFF203449)
+
+@Composable
+fun V30Home(
+    news: AppState,
+    newsVm: MonitorViewModel,
+    videos: VideoState,
+    openVideos: () -> Unit
+) {
+    val now = System.currentTimeMillis()
+    val news24h = news.news.count { it.date >= now - 24L * 60L * 60L * 1000L }
+    val videoDemands = videos.items.count { it.demand }
+    val demandHits = news.demands.count { it.lastFoundCount > 0 }
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences(BackgroundMonitor.PREFS, Context.MODE_PRIVATE)
+    val autoNewsStart = prefs.getLong(AutoRunLog.KEY_NEWS_ATTEMPT_AT, 0L)
+    val autoNewsEnd = prefs.getLong(AutoRunLog.KEY_NEWS_COMPLETED_AT, 0L)
+    val manualNewsStart = news.searchProgress.startedAt
+    val manualNewsEnd = news.searchProgress.finishedAt.takeIf { it > 0L } ?: if (news.searchProgress.active) now else 0L
+    val useManualNewsWindow = manualNewsStart > autoNewsStart
+    val newNewsStart = if (useManualNewsWindow) manualNewsStart else autoNewsStart
+    val newNewsEnd = if (useManualNewsWindow) manualNewsEnd else autoNewsEnd
+    val visibleNewNews = news.news.count { v401InRun(it.capturedAt, newNewsStart, newNewsEnd) }
+    val orderedNews = news.news.sortedWith(
+        compareByDescending<News> { v401InRun(it.capturedAt, newNewsStart, newNewsEnd) }
+            .thenByDescending { it.date }
+    )
+    val lastUpdated = news.lastUpdatedAt ?: news.searchProgress.finishedAt.takeIf { it > 0L } ?: autoNewsEnd
+    val latest = orderedNews.firstOrNull()
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+        verticalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        item {
+            V40SummaryCard(
+                total = news.news.size,
+                updatedAt = v30DateTime(lastUpdated),
+                onClick = {}
+            )
+        }
+        item {
+            V40MonitoringCard(
+                active = true,
+                busy = news.busy,
+                subtitle = if (news.searchProgress.active) "Resultados sendo carregados em tempo real" else "Notícias, demandas e vídeos em segundo plano",
+                lastRun = v30DateTime(lastUpdated),
+                onRefresh = newsVm::search
+            )
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V40MetricCard(
+                    title = "Notícias 24h",
+                    value = news24h.toString(),
+                    footer = if (visibleNewNews > 0) "+$visibleNewNews hoje" else "Sem novas",
+                    icon = Icons.Outlined.Article,
+                    color = V30Accent,
+                    modifier = Modifier.weight(1f)
+                )
+                V40MetricCard(
+                    title = "Demandas encontradas",
+                    value = demandHits.toString(),
+                    footer = if (demandHits > 0) "Com alertas" else "Sem novas",
+                    icon = Icons.Outlined.NotificationsNone,
+                    color = V30Amber,
+                    modifier = Modifier.weight(1f)
+                )
+            }
+        }
+        item {
+            V40VideosCard(videos = videos, demandCount = videoDemands, onClick = openVideos)
+        }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Últimas notícias", fontSize = 24.sp, fontWeight = FontWeight.ExtraBold, color = Color.White, modifier = Modifier.weight(1f))
+                OutlinedButton(
+                    onClick = {},
+                    shape = RoundedCornerShape(18.dp),
+                    border = BorderStroke(1.dp, V30Accent.copy(alpha = .55f)),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Accent),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                ) {
+                    Text("Ver todas", fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                    Spacer(Modifier.width(6.dp))
+                    Icon(Icons.Outlined.ChevronRight, contentDescription = null, modifier = Modifier.size(16.dp))
+                }
+            }
+        }
+        if (latest == null) {
+            item { V30Empty("Nenhuma notícia no escopo atual", "Faça uma busca ou ajuste suas fontes.") }
+        } else {
+            item { V40LatestNewsCard(latest, isNew = v401InRun(latest.capturedAt, newNewsStart, newNewsEnd)) }
+        }
+        if (orderedNews.size > 1) {
+            items(orderedNews.drop(1).take(10), key = { it.link }) { item ->
+                V30NewsCard(item, newNewsStart, newNewsEnd)
+            }
+        }
+    }
+}
+
+@Composable
+private fun V40SummaryCard(total: Int, updatedAt: String, onClick: () -> Unit) {
+    Surface(
+        color = Color(0xFF092231),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFF0CA9C8).copy(alpha = .55f)),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Box(
+                Modifier.size(58.dp).clip(RoundedCornerShape(18.dp)).background(Color(0xFF0D3D44)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.Description, contentDescription = null, tint = Color(0xFF4AF4D1), modifier = Modifier.size(30.dp))
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.Bottom) {
+                    Text(total.toString(), color = Color(0xFF4AF4D1), fontSize = 25.sp, fontWeight = FontWeight.ExtraBold)
+                    Spacer(Modifier.width(8.dp))
+                    Text("nova(s) notícia(s) encontrada(s)", color = Color.White, fontSize = 14.sp, fontWeight = FontWeight.SemiBold)
+                }
+                Spacer(Modifier.height(4.dp))
+                Text("Última atualização: $updatedAt", color = Color(0xFF9CB5CB), fontSize = 12.sp)
+            }
+            Box(
+                Modifier.size(54.dp).clip(RoundedCornerShape(20.dp)).background(Color(0xFF0C2338)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(Icons.Outlined.ChevronRight, contentDescription = null, tint = Color(0xFFB3D9FF), modifier = Modifier.size(28.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun V40MonitoringCard(active: Boolean, busy: Boolean, subtitle: String, lastRun: String, onRefresh: () -> Unit) {
+    Surface(
+        color = Color(0xFF0A2043),
+        shape = RoundedCornerShape(28.dp),
+        border = BorderStroke(1.dp, Color(0xFF176CC7).copy(alpha = .70f)),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 16.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            V40RadarGraphic()
+            Spacer(Modifier.width(16.dp))
+            Column(Modifier.weight(1f)) {
+                Surface(
+                    color = Color(0xFF0E533A),
+                    shape = RoundedCornerShape(50),
+                    border = BorderStroke(1.dp, Color(0xFF2BCF96).copy(alpha = .45f))
+                ) {
+                    Row(Modifier.padding(horizontal = 12.dp, vertical = 6.dp), verticalAlignment = Alignment.CenterVertically) {
+                        Box(Modifier.size(10.dp).clip(RoundedCornerShape(50)).background(Color(0xFF42F3B8)))
+                        Spacer(Modifier.width(8.dp))
+                        Text(if (active) "MONITORAMENTO ATIVO" else "MONITORAMENTO PAUSADO", color = Color(0xFF42F3B8), fontSize = 11.5.sp, fontWeight = FontWeight.ExtraBold)
+                    }
+                }
+                Spacer(Modifier.height(12.dp))
+                Text("Monitoramento em execução", color = Color.White, fontSize = 19.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(4.dp))
+                Text(subtitle, color = Color(0xFFB8CAE0), fontSize = 13.sp, lineHeight = 18.sp)
+                Spacer(Modifier.height(10.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.Schedule, null, tint = Color(0xFF8EB8FF), modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(8.dp))
+                    Text("Último disparo: $lastRun", color = Color(0xFFB9CDE3), fontSize = 12.5.sp)
+                }
+            }
+            Spacer(Modifier.width(14.dp))
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Surface(
+                    onClick = onRefresh,
+                    enabled = !busy,
+                    color = Color(0xFF5CAEFF),
+                    shape = RoundedCornerShape(99.dp),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier.size(92.dp)
+                ) {
+                    Box(contentAlignment = Alignment.Center) {
+                        Icon(if (busy) Icons.Outlined.HourglassTop else Icons.Outlined.Refresh, null, tint = Color(0xFF051932), modifier = Modifier.size(42.dp))
+                    }
+                }
+                Spacer(Modifier.height(10.dp))
+                Text("Atualizar\nagora", color = Color(0xFFBFD4F0), fontSize = 11.5.sp, lineHeight = 16.sp)
+            }
+        }
+    }
+}
+
+@Composable
+private fun V40RadarGraphic() {
+    Box(
+        Modifier
+            .size(144.dp)
+            .clip(RoundedCornerShape(50))
+            .background(Color(0xFF061F34)),
+        contentAlignment = Alignment.Center
+    ) {
+        Canvas(Modifier.size(122.dp)) {
+            val c = center
+            drawCircle(color = Color(0xFF0C6B71), radius = size.minDimension / 2f, style = Stroke(width = 6f))
+            drawCircle(color = Color(0xFF18D7B4).copy(alpha = .68f), radius = size.minDimension / 2.8f, style = Stroke(width = 5f))
+            drawCircle(color = Color(0xFF18D7B4).copy(alpha = .85f), radius = size.minDimension / 6.5f, style = Stroke(width = 4f))
+            val end = Offset(c.x + size.minDimension * 0.23f, c.y - size.minDimension * 0.18f)
+            drawLine(color = Color(0xFF4EF2D2), start = c, end = end, strokeWidth = 7f)
+            drawCircle(color = Color(0xFF4EF2D2), radius = 8f, center = end)
+            drawCircle(color = Color(0xFF4EF2D2), radius = 7f, center = c)
+        }
+    }
+}
+
+@Composable
+private fun V40MetricCard(title: String, value: String, footer: String, icon: ImageVector, color: Color, modifier: Modifier) {
+    Surface(
+        color = Color(0xFF0A1D39),
+        shape = RoundedCornerShape(20.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = .38f)),
+        modifier = modifier
+    ) {
+        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+            Box(
+                Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = .12f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(icon, null, tint = color, modifier = Modifier.size(34.dp))
+            }
+            Spacer(Modifier.width(12.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 15.sp)
+                Spacer(Modifier.height(2.dp))
+                Text(value, color = color, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold)
+                Spacer(Modifier.height(4.dp))
+                Text(footer, color = if (footer.contains("Sem")) Color(0xFF93A9C0) else Color(0xFF42F3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
+            }
+            Icon(Icons.Outlined.ChevronRight, null, tint = Color(0xFFA5C9F5), modifier = Modifier.size(22.dp))
+        }
+    }
+}
+
+@Composable
+private fun V40VideosCard(videos: VideoState, demandCount: Int, onClick: () -> Unit) {
+    Surface(
+        color = Color(0xFF10183D),
+        shape = RoundedCornerShape(24.dp),
+        border = BorderStroke(1.dp, Color(0xFF5E43E6).copy(alpha = .55f)),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Column(Modifier.fillMaxWidth().padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Box(
+                    Modifier.size(56.dp).clip(RoundedCornerShape(16.dp)).background(Color(0xFF2A2150)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(Icons.Outlined.PlayCircle, null, tint = Color(0xFFC18BFF), modifier = Modifier.size(32.dp))
+                }
+                Spacer(Modifier.width(14.dp))
+                Column(Modifier.weight(1f)) {
+                    Text("Monitor de Vídeos", color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.ExtraBold)
+                    Text("TV, portais, YouTube e conteúdo audiovisual", color = Color(0xFFB5C7E1), fontSize = 12.5.sp)
+                }
+                Icon(Icons.Outlined.ChevronRight, null, tint = Color(0xFFC18BFF), modifier = Modifier.size(26.dp))
+            }
+            Spacer(Modifier.height(14.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                V40TinyStat(videos.totalStored.toString(), "Encontrados", Color(0xFFA865FF), Modifier.weight(1f))
+                V40TinyStat(videos.capturedToday.toString(), "Hoje", Color(0xFF38F6D6), Modifier.weight(1f))
+                V40TinyStat(demandCount.toString(), "Demandas", Color(0xFFF0B35D), Modifier.weight(1f))
+                V40TinyStat(videos.selectedSourceIds.size.toString(), "Fontes ativas", Color(0xFF5AA8FF), Modifier.weight(1f))
+            }
+        }
+    }
+}
+
+@Composable
+private fun V40TinyStat(value: String, label: String, color: Color, modifier: Modifier) {
+    Surface(
+        color = color.copy(alpha = .10f),
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, color.copy(alpha = .26f)),
+        modifier = modifier
+    ) {
+        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), horizontalAlignment = Alignment.Start) {
+            Text(value, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+            Spacer(Modifier.height(2.dp))
+            Text(label, color = Color(0xFFD7E6F6), fontSize = 10.5.sp, lineHeight = 13.sp)
+        }
+    }
+}
+
+@Composable
+private fun V40LatestNewsCard(n: News, isNew: Boolean) {
+    val context = LocalContext.current
+    Surface(
+        color = Color(0xFF0A1D39),
+        shape = RoundedCornerShape(22.dp),
+        border = BorderStroke(1.dp, Color(0xFF1E75D0).copy(alpha = .65f)),
+        modifier = Modifier.fillMaxWidth().clickable {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.link)))
+        }
+    ) {
+        Row(Modifier.fillMaxWidth().padding(14.dp), verticalAlignment = Alignment.Top) {
+            Image(
+                painter = painterResource(R.drawable.v40_news_thumb),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.size(width = 110.dp, height = 116.dp).clip(RoundedCornerShape(14.dp))
+            )
+            Spacer(Modifier.width(14.dp))
+            Column(Modifier.weight(1f)) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(n.source.ifBlank { "Fonte" }, color = V30Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    if (isNew) {
+                        Surface(color = Color(0xFF0D5C32), shape = RoundedCornerShape(99.dp), border = BorderStroke(1.dp, Color(0xFF2BD77F).copy(alpha = .34f))) {
+                            Text("NOVO", color = Color(0xFF68FF9E), fontSize = 10.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp))
+                        }
+                    }
+                    Spacer(Modifier.width(8.dp))
+                    Text(v30DateTime(n.date), color = Color(0xFFD7E6F6), fontSize = 11.5.sp)
+                }
+                Spacer(Modifier.height(8.dp))
+                Text(n.title, color = Color.White, fontSize = 15.8.sp, lineHeight = 21.sp, fontWeight = FontWeight.ExtraBold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                if (n.snippet.isNotBlank()) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(n.snippet, color = Color(0xFFB6C7DE), fontSize = 12.sp, lineHeight = 17.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+                }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Surface(color = Color(0xFF10386C), shape = RoundedCornerShape(10.dp)) {
+                        Text(
+                            (n.matchedDemand.ifBlank { n.matchedTerm }).ifBlank { "Forças Armadas" },
+                            color = Color(0xFF76B6FF),
+                            fontSize = 10.5.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                    Spacer(Modifier.weight(1f))
+                    Icon(Icons.Outlined.ChevronRight, null, tint = Color(0xFF76B6FF), modifier = Modifier.size(24.dp))
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun V30Videos(s: VideoState, vm: VideoViewModel, openSources: () -> Unit) {
+    var showPeriod by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+    var showUnstable by remember { mutableStateOf(false) }
+    val from = v30ParseDateTime(s.periodStartDate, s.periodStartTime)
+    val to = v30ParseDateTime(s.periodEndDate, s.periodEndTime)
+    val validPeriod = from != null && to != null && from < to
+    val context = LocalContext.current
+    val prefs = context.getSharedPreferences(BackgroundMonitor.PREFS, Context.MODE_PRIVATE)
+    val autoVideoStart = prefs.getLong(VideoAutoRunLog.KEY_ATTEMPT_AT, 0L)
+    val autoVideoEnd = prefs.getLong(VideoAutoRunLog.KEY_COMPLETED_AT, 0L)
+    val manualVideoStart = s.searchProgress.startedAt
+    val manualVideoEnd = s.searchProgress.finishedAt.takeIf { it > 0L } ?: if (s.searchProgress.active) System.currentTimeMillis() else 0L
+    val useManualVideoWindow = manualVideoStart > autoVideoStart
+    val newVideoStart = if (useManualVideoWindow) manualVideoStart else autoVideoStart
+    val newVideoEnd = if (useManualVideoWindow) manualVideoEnd else autoVideoEnd
+    val shown = when (s.filter) {
+        VideoFilter.ALL -> s.items
+        VideoFilter.RELEVANT -> s.items.filter { it.relevant }
+        VideoFilter.DEMANDS -> s.items.filter { it.demand }
+    }
+    val visibleNewVideos = shown.count { v401InRun(it.capturedAt, newVideoStart, newVideoEnd) }
+    val orderedShown = shown.sortedWith(
+        compareByDescending<VideoItem> { v401InRun(it.capturedAt, newVideoStart, newVideoEnd) }
+            .thenByDescending { it.publishedAt }
+    )
+
+    LazyColumn(
+        modifier = Modifier.fillMaxSize(),
+        contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(10.dp)
+    ) {
+        item {
+            Surface(
+                color = V30Purple.copy(alpha = .08f),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.dp, V30Purple.copy(alpha = .25f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(Modifier.padding(14.dp)) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Box(
+                            Modifier.size(44.dp).clip(RoundedCornerShape(14.dp)).background(V30Purple.copy(alpha = .13f)),
+                            contentAlignment = Alignment.Center
+                        ) { Icon(Icons.Outlined.SmartDisplay, null, tint = V30Purple, modifier = Modifier.size(25.dp)) }
+                        Spacer(Modifier.width(11.dp))
+                        Column(Modifier.weight(1f)) {
+                            Text(if (s.busy) "Varredura em andamento" else "Monitor de Vídeos", fontSize = 15.sp, fontWeight = FontWeight.Bold)
+                            Text("${s.totalStored} armazenado(s) • ${s.capturedToday} novo(s) hoje • ${s.selectedSourceIds.size} fonte(s) ativa(s)", color = V30Text2, fontSize = 11.sp)
+                        }
+                        FilledIconButton(onClick = vm::searchNow, enabled = !s.busy, modifier = Modifier.size(44.dp)) {
+                            Icon(if (s.busy) Icons.Outlined.HourglassTop else Icons.Outlined.Refresh, "Buscar vídeos")
+                        }
+                    }
+                    Spacer(Modifier.height(10.dp))
+                    OutlinedButton(
+                        onClick = { confirmClear = true },
+                        enabled = !s.busy && s.totalStored > 0,
+                        modifier = Modifier.fillMaxWidth().height(42.dp),
+                        border = BorderStroke(1.dp, V30Red.copy(alpha = .38f)),
+                        colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Red)
+                    ) {
+                        Icon(Icons.Outlined.DeleteSweep, null, modifier = Modifier.size(18.dp))
+                        Spacer(Modifier.width(7.dp))
+                        Text("Limpar vídeos")
+                    }
+                    if (s.searchProgress.startedAt > 0L) {
+                        Spacer(Modifier.height(10.dp))
+                        V30ProgressBody(s.searchProgress, V30Purple)
+                    } else {
+                        Spacer(Modifier.height(8.dp))
+                        Text("Os cards entram nesta tela assim que cada vídeo é validado, sem esperar o fim da varredura.", color = V30Text2, fontSize = 10.5.sp)
+                    }
+                }
+            }
+        }
+
+        if (!s.busy && s.unstableSources.isNotEmpty()) {
+            item {
+                OutlinedButton(
+                    onClick = { showUnstable = true },
+                    modifier = Modifier.fillMaxWidth().height(42.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Amber),
+                    border = BorderStroke(1.dp, V30Amber.copy(alpha = .38f))
+                ) {
+                    Icon(Icons.Outlined.ErrorOutline, null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(7.dp))
+                    Text("Ver fontes instáveis (${s.unstableSources.size})")
+                }
+            }
+        }
+
+        item {
+            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                V30Chip("Todos", s.filter == VideoFilter.ALL) { vm.setFilter(VideoFilter.ALL) }
+                V30Chip("Relevantes", s.filter == VideoFilter.RELEVANT) { vm.setFilter(VideoFilter.RELEVANT) }
+                V30Chip("Demandas", s.filter == VideoFilter.DEMANDS) { vm.setFilter(VideoFilter.DEMANDS) }
+                V30Chip("Fontes (${s.selectedSourceIds.size})", false, openSources)
+                V30Chip("Período", showPeriod) { showPeriod = !showPeriod }
+            }
+        }
+
+        if (showPeriod) {
+            item {
+                Surface(color = V30Surface, shape = RoundedCornerShape(17.dp), border = BorderStroke(1.dp, V30Divider), modifier = Modifier.fillMaxWidth()) {
+                    Column(Modifier.padding(13.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Outlined.DateRange, null, tint = V30Purple)
+                            Spacer(Modifier.width(8.dp))
+                            Column(Modifier.weight(1f)) {
+                                Text("Pesquisar vídeos por período", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                                Text("Os resultados também aparecem progressivamente.", color = V30Text2, fontSize = 10.5.sp)
+                            }
+                        }
+                        Spacer(Modifier.height(9.dp))
+                        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            listOf("Hoje" to 0, "24 horas" to 1, "7 dias" to 7, "30 dias" to 30).forEach { (label, days) ->
+                                V30Chip(label, false) { vm.applyPeriodPreset(days) }
+                            }
+                        }
+                        Spacer(Modifier.height(9.dp))
+                        Text("Início", color = V30Accent, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            OutlinedTextField(s.periodStartDate, vm::setPeriodStartDate, label = { Text("Data") }, singleLine = true, modifier = Modifier.weight(1.4f))
+                            OutlinedTextField(s.periodStartTime, vm::setPeriodStartTime, label = { Text("Hora") }, singleLine = true, modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(7.dp))
+                        Text("Fim", color = V30Mint, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                        Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                            OutlinedTextField(s.periodEndDate, vm::setPeriodEndDate, label = { Text("Data") }, singleLine = true, modifier = Modifier.weight(1.4f))
+                            OutlinedTextField(s.periodEndTime, vm::setPeriodEndTime, label = { Text("Hora") }, singleLine = true, modifier = Modifier.weight(1f))
+                        }
+                        Spacer(Modifier.height(9.dp))
+                        Button(onClick = vm::searchSavedPeriod, enabled = validPeriod && !s.busy, modifier = Modifier.fillMaxWidth().height(46.dp)) {
+                            Icon(Icons.Outlined.Search, null, modifier = Modifier.size(18.dp))
+                            Spacer(Modifier.width(7.dp))
+                            Text(if (s.busy) "Pesquisando..." else "Pesquisar vídeos no período")
+                        }
+                        if (!validPeriod) {
+                            Spacer(Modifier.height(6.dp))
+                            Text("Revise as datas e horários. Use dd/MM/aaaa e HH:mm.", color = V30Amber, fontSize = 10.5.sp)
+                        }
+                    }
+                }
+            }
+        }
+
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("Vídeos encontrados", fontSize = 18.sp, fontWeight = FontWeight.ExtraBold, modifier = Modifier.weight(1f))
+                if (visibleNewVideos > 0) {
+                    V30Badge(if (visibleNewVideos == 1) "1 NOVO" else "$visibleNewVideos NOVOS", V30Mint)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text("${shown.size}", color = if (s.busy) V30Mint else V30Text2, fontSize = 12.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+        if (shown.isEmpty()) {
+            item { V30Empty("Nenhum vídeo encontrado", "Use Buscar agora ou selecione as fontes desejadas na aba Fontes.") }
+        } else {
+            items(orderedShown, key = { it.link }) { V30VideoCard(it, newVideoStart, newVideoEnd) }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            icon = { Icon(Icons.Outlined.DeleteSweep, null, tint = V30Red) },
+            title = { Text("Limpar vídeos?") },
+            text = { Text("Isso apaga o histórico de vídeos detectados. Termos, Demandas e fontes selecionadas serão mantidos.") },
+            confirmButton = { TextButton(onClick = { confirmClear = false; vm.clearHistory() }) { Text("Limpar", color = V30Red) } },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Cancelar") } },
+            containerColor = V30Surface2
+        )
+    }
+
+    if (showUnstable) {
+        AlertDialog(
+            onDismissRequest = { showUnstable = false },
+            icon = { Icon(Icons.Outlined.ErrorOutline, null, tint = V30Amber) },
+            title = { Text("Fontes instáveis (${s.unstableSources.size})") },
+            text = {
+                Column(
+                    Modifier.heightIn(max = 430.dp).verticalScroll(rememberScrollState()),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        "Uma fonte entra aqui quando não conseguiu completar sua rota principal. O número de falhas e a etapa ajudam a identificar URLs fora do ar, bloqueios e timeouts.",
+                        color = V30Text2,
+                        fontSize = 10.8.sp
+                    )
+                    s.unstableSources.forEach { issue ->
+                        Surface(
+                            color = V30Amber.copy(alpha = .07f),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, V30Amber.copy(alpha = .18f)),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Column(Modifier.padding(9.dp)) {
+                                Text(issue.sourceName, fontSize = 11.5.sp, fontWeight = FontWeight.Bold)
+                                Text(
+                                    "${issue.failureCount} falha(s) • ${issue.stage}",
+                                    color = V30Text2,
+                                    fontSize = 10.sp
+                                )
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showUnstable = false }) { Text("Fechar") } },
+            containerColor = V30Surface2
+        )
+    }
+}
+
+@Composable
+fun V30SourcesHub(
+    news: AppState,
+    newsVm: MonitorViewModel,
+    videos: VideoState,
+    videoVm: VideoViewModel,
+    selectedTab: Int,
+    onTabChange: (Int) -> Unit
+) {
+    Column(Modifier.fillMaxSize()) {
+        Row(
+            Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 10.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            V30Segment("Notícias", Icons.Outlined.Newspaper, selectedTab == 0, Modifier.weight(1f)) { onTabChange(0) }
+            V30Segment("Vídeos", Icons.Outlined.SmartDisplay, selectedTab == 1, Modifier.weight(1f)) { onTabChange(1) }
+        }
+        if (selectedTab == 0) {
+            V30NewsSources(news, newsVm, Modifier.weight(1f))
+        } else {
+            V30VideoSources(videos, videoVm, Modifier.weight(1f))
+        }
+    }
+}
+
+@Composable
+private fun V30NewsSources(s: AppState, vm: MonitorViewModel, modifier: Modifier) {
+    var mode by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var region by remember { mutableStateOf(SourceCatalog.ALL_REGION) }
+    var stateCode by remember { mutableStateOf("") }
+    val base = when (mode) {
+        0 -> SourceCatalog.national
+        1 -> SourceCatalog.byState
+        else -> SourceCatalog.specialized
+    }
+    val visible = base.filter { src ->
+        val regionOk = mode != 1 || region == SourceCatalog.ALL_REGION || src.region == region
+        val stateOk = mode != 1 || stateCode.isBlank() || src.state == stateCode
+        val queryOk = query.isBlank() || (listOf(src.name, src.group, src.region, src.stateName, src.state) + src.aliases)
+            .any { it.contains(query, ignoreCase = true) }
+        regionOk && stateOk && queryOk
+    }
+
+    LazyColumn(modifier = modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Surface(color = if (s.searchAllSources) V30Mint.copy(alpha = .08f) else V30Surface, shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, if (s.searchAllSources) V30Mint.copy(alpha = .24f) else V30Divider)) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.TravelExplore, null, tint = V30Mint)
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Buscar em todos os veículos", fontSize = 13.5.sp, fontWeight = FontWeight.Bold)
+                        Text("Inclui portais fora do catálogo", color = V30Text2, fontSize = 10.5.sp)
+                    }
+                    Switch(checked = s.searchAllSources, onCheckedChange = vm::setSearchAllSources)
+                }
+            }
+        }
+        item {
+            Row(
+                Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(7.dp)
+            ) {
+                V30Segment("Nacionais", Icons.Outlined.Public, mode == 0, Modifier.width(130.dp)) {
+                    mode = 0; stateCode = ""; region = SourceCatalog.ALL_REGION
+                }
+                V30Segment("Mídia especializada", Icons.Outlined.Article, mode == 2, Modifier.width(190.dp)) {
+                    mode = 2; stateCode = ""; region = SourceCatalog.ALL_REGION
+                }
+                V30Segment("Estados", Icons.Outlined.Map, mode == 1, Modifier.width(120.dp)) {
+                    mode = 1
+                }
+            }
+        }
+        item { OutlinedTextField(query, { query = it }, label = { Text("Pesquisar veículo") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+        if (mode == 1) {
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SourceCatalog.regions.filter { it != SourceCatalog.NATIONAL_REGION }.forEach { item -> V30Chip(item, region == item) { region = item; stateCode = "" } }
+                }
+            }
+            item {
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    V30Chip("Todos", stateCode.isBlank()) { stateCode = "" }
+                    SourceCatalog.states.filter { region == SourceCatalog.ALL_REGION || it.third == region }.forEach { triple ->
+                        V30Chip(triple.first, stateCode == triple.first) { stateCode = triple.first }
+                    }
+                }
+            }
+        }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${visible.size} fonte(s) visível(is)", color = V30Text2, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { vm.setVisibleSources(visible.map { it.id }.toSet(), true) }) { Text("Selecionar") }
+                TextButton(onClick = { vm.setVisibleSources(visible.map { it.id }.toSet(), false) }) { Text("Limpar") }
+            }
+        }
+        items(visible, key = { "news-${it.id}" }) { source ->
+            val selected = source.id in s.selectedSourceIds
+            val subtitle = if (source.region == SourceCatalog.NATIONAL_REGION) source.group else "${source.state} • ${source.region}"
+            V30SourceCard(source.name, subtitle, selected) {
+                vm.setSourceSelected(source.id, !selected)
+            }
+        }
+    }
+}
+
+@Composable
+private fun V30VideoSources(s: VideoState, vm: VideoViewModel, modifier: Modifier) {
+    var mode by remember { mutableIntStateOf(0) }
+    var query by remember { mutableStateOf("") }
+    var region by remember { mutableStateOf(SourceCatalog.ALL_REGION) }
+    var stateCode by remember { mutableStateOf("") }
+    val base = if (mode == 0) VideoSourceCatalog.national else VideoSourceCatalog.regional
+    val visible = base.filter { src ->
+        val regionOk = mode == 0 || region == SourceCatalog.ALL_REGION || src.region == region
+        val stateOk = mode == 0 || stateCode.isBlank() || src.state == stateCode
+        val stateName = SourceCatalog.states.firstOrNull { it.first == src.state }?.second.orEmpty()
+        val queryOk = query.isBlank() || (listOf(src.name, src.group, src.region, src.state, stateName) + src.aliases)
+            .any { it.contains(query, ignoreCase = true) }
+        regionOk && stateOk && queryOk
+    }
+
+    LazyColumn(modifier = modifier.fillMaxWidth(), contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        item {
+            Surface(color = V30Purple.copy(alpha = .07f), shape = RoundedCornerShape(16.dp), border = BorderStroke(1.dp, V30Purple.copy(alpha = .20f))) {
+                Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Outlined.VideoLibrary, null, tint = V30Purple)
+                    Spacer(Modifier.width(9.dp))
+                    Column(Modifier.weight(1f)) {
+                        Text("Fontes de Vídeo", fontSize = 14.sp, fontWeight = FontWeight.Bold)
+                        Text("${s.selectedSourceIds.size} fonte(s) ativa(s) • TV, Globoplay, portais e YouTube oficial", color = V30Text2, fontSize = 10.5.sp)
+                    }
+                }
+            }
+        }
+        item {
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                V30Segment("Nacionais", Icons.Outlined.Public, mode == 0, Modifier.weight(1f)) { mode = 0; stateCode = ""; region = SourceCatalog.ALL_REGION }
+                V30Segment("Estados", Icons.Outlined.Map, mode == 1, Modifier.weight(1f)) { mode = 1 }
+            }
+        }
+        item { OutlinedTextField(query, { query = it }, label = { Text("Pesquisar canal, telejornal ou fonte") }, leadingIcon = { Icon(Icons.Outlined.Search, null) }, singleLine = true, modifier = Modifier.fillMaxWidth()) }
+        if (mode == 1) {
+            item {
+                Text("Região", color = V30Text2, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(5.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    SourceCatalog.regions.filter { it != SourceCatalog.NATIONAL_REGION }.forEach { item -> V30Chip(item, region == item) { region = item; stateCode = "" } }
+                }
+            }
+            item {
+                Text("Estado", color = V30Text2, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+                Spacer(Modifier.height(5.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    V30Chip("Todos", stateCode.isBlank()) { stateCode = "" }
+                    SourceCatalog.states.filter { region == SourceCatalog.ALL_REGION || it.third == region }.forEach { triple ->
+                        V30Chip(triple.first, stateCode == triple.first) { stateCode = triple.first }
+                    }
+                }
+            }
+        }
+        item {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text("${visible.size} fonte(s) visível(is)", color = V30Text2, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                TextButton(onClick = { vm.setSources(visible.map { it.id }.toSet(), true) }) { Text("Selecionar") }
+                TextButton(onClick = { vm.setSources(visible.map { it.id }.toSet(), false) }) { Text("Limpar") }
+            }
+        }
+        items(visible, key = { "video-${it.id}" }) { source ->
+            val selected = source.id in s.selectedSourceIds
+            val stateName = SourceCatalog.states.firstOrNull { it.first == source.state }?.second.orEmpty()
+            val subtitle = if (source.state.isBlank()) source.group else "${source.state} • $stateName • ${source.region}"
+            V30SourceCard(source.name, subtitle, selected) { vm.setSourceSelected(source.id, !selected) }
+        }
+    }
+}
+
+@Composable
+fun V30CompactProgress(progress: LiveSearchProgress) {
+    if (!progress.active) return
+    Surface(color = V30Surface2, modifier = Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(horizontal = 16.dp, vertical = 8.dp)) {
+            V30ProgressBody(progress, if (progress.kind.startsWith("Vídeos")) V30Purple else V30Mint)
+        }
+    }
+}
+
+@Composable
+private fun V30ProgressBody(progress: LiveSearchProgress, color: Color) {
+    val elapsed = v30ElapsedSeconds(progress)
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Icon(Icons.Outlined.Timer, null, tint = color, modifier = Modifier.size(17.dp))
+        Spacer(Modifier.width(6.dp))
+        Text(v30Duration(elapsed), color = color, fontSize = 12.sp, fontWeight = FontWeight.ExtraBold)
+        Spacer(Modifier.width(8.dp))
+        Text(progress.kind.ifBlank { "Busca" }, fontSize = 11.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f))
+        if (progress.total > 0) Text("${progress.completed}/${progress.total}", color = V30Text2, fontSize = 10.5.sp)
+    }
+    Spacer(Modifier.height(6.dp))
+    LinearProgressIndicator(progress = { progress.fraction }, modifier = Modifier.fillMaxWidth().height(5.dp), color = color, trackColor = V30Divider)
+    Spacer(Modifier.height(6.dp))
+    Text("Agora: ${progress.currentSource.ifBlank { "preparando" }}", color = V30Text2, fontSize = 10.5.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    if (progress.currentQuery.isNotBlank()) {
+        Text("Termo: ${progress.currentQuery}", color = V30Text2, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+    Spacer(Modifier.height(4.dp))
+    Text("${progress.found} encontrado(s) • ${progress.newCount} novo(s) • ${progress.errors} fonte(s) instável(is)", color = color, fontSize = 10.5.sp, fontWeight = FontWeight.Bold)
+}
+
+@Composable
+private fun v30ElapsedSeconds(progress: LiveSearchProgress): Long {
+    var now by remember(progress.startedAt) { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(progress.active, progress.startedAt) {
+        if (progress.active && progress.startedAt > 0) {
+            while (true) {
+                now = System.currentTimeMillis()
+                delay(1000)
+            }
+        }
+    }
+    val end = if (progress.active) now else progress.finishedAt.takeIf { it > 0 } ?: now
+    return if (progress.startedAt <= 0) 0 else ((end - progress.startedAt).coerceAtLeast(0L) / 1000L)
+}
+
+private fun v30Duration(seconds: Long): String = "%02d:%02d".format(seconds / 60, seconds % 60)
+
+@Composable
+private fun V30SourceCard(title: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(
+        color = if (selected) V30Selected else V30Surface,
+        shape = RoundedCornerShape(12.dp),
+        tonalElevation = if (selected) 1.dp else 0.dp,
+        border = BorderStroke(1.dp, if (selected) V30Accent.copy(alpha = .45f) else V30Divider),
+        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick)
+    ) {
+        Row(Modifier.padding(horizontal = 12.dp, vertical = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(if (selected) Icons.Outlined.CheckCircle else Icons.Outlined.RadioButtonUnchecked, null, tint = if (selected) V30Accent else V30Text2, modifier = Modifier.size(21.dp))
+            Spacer(Modifier.width(10.dp))
+            Column(Modifier.weight(1f)) {
+                Text(title, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+                Text(subtitle, color = V30Text2, fontSize = 10.3.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+            }
+        }
+    }
+}
+
+@Composable
+private fun V30VideoCard(item: VideoItem, newStart: Long, newEnd: Long) {
+    val context = LocalContext.current
+    val isNew = v401InRun(item.capturedAt, newStart, newEnd)
+    val open = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(item.link))) }; Unit }
+    Surface(color = V30Surface, shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp, border = BorderStroke(1.dp, V30Divider), modifier = Modifier.fillMaxWidth().clickable(onClick = open)) {
+        Column(Modifier.padding(14.dp)) {
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(99.dp)).background(V30Purple.copy(alpha = .72f)))
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Outlined.PlayCircle, null, tint = V30Purple, modifier = Modifier.size(22.dp))
+                Spacer(Modifier.width(8.dp))
+                Column(Modifier.weight(1f)) {
+                    Text(item.sourceName, color = V30Purple, fontSize = 12.sp, fontWeight = FontWeight.Bold, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    Text(v30DateTime(item.publishedAt), color = V30Text2, fontSize = 10.5.sp)
+                }
+                if (isNew) {
+                    V30Badge("NOVO", V30Mint)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text("Link direto", color = V30Mint, fontSize = 9.5.sp, fontWeight = FontWeight.Bold)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(item.title, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (item.summary.isNotBlank()) {
+                Spacer(Modifier.height(5.dp))
+                Text(item.summary, color = V30Text2, fontSize = 11.sp, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            }
+            if (item.relevant) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (item.demand) V30Badge("DEMANDA", V30Amber)
+                    item.matchedTerm.split(',').map { it.trim() }.filter { it.isNotBlank() }.take(4).forEach { V30Badge(it, V30Accent) }
+                }
+            }
+            Spacer(Modifier.height(9.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                OutlinedButton(
+                    onClick = open,
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.SmartDisplay, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Abrir", maxLines = 1, fontSize = 10.5.sp)
+                }
+                OutlinedButton(
+                    onClick = { v30CopyLink(context, "Link do vídeo", item.link) },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Accent)
+                ) {
+                    Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Copiar link", maxLines = 1, fontSize = 10.2.sp)
+                }
+                OutlinedButton(
+                    onClick = { v30ShareWhatsApp(context, item.title, item.link) },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Mint)
+                ) {
+                    Icon(Icons.Outlined.Share, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("WhatsApp", maxLines = 1, fontSize = 10.2.sp)
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun V30NewsCard(n: News, newStart: Long, newEnd: Long) {
+    val context = LocalContext.current
+    val isNew = v401InRun(n.capturedAt, newStart, newEnd)
+    Surface(color = V30Surface, shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp, border = BorderStroke(1.dp, V30Divider), modifier = Modifier.fillMaxWidth().clickable {
+        runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.link))) }
+    }) {
+        Column(Modifier.padding(14.dp)) {
+            Box(Modifier.fillMaxWidth().height(3.dp).clip(RoundedCornerShape(99.dp)).background(V30Accent.copy(alpha = .72f)))
+            Spacer(Modifier.height(10.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(n.source, color = V30Accent, fontSize = 12.sp, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1f), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                if (isNew) {
+                    V30Badge("NOVO", V30Mint)
+                    Spacer(Modifier.width(6.dp))
+                }
+                Text(v30DateTime(n.date), color = V30Text2, fontSize = 10.5.sp)
+            }
+            Spacer(Modifier.height(7.dp))
+            Text(n.title, fontSize = 14.sp, lineHeight = 18.sp, fontWeight = FontWeight.Bold, maxLines = 3, overflow = TextOverflow.Ellipsis)
+            if (n.snippet.isNotBlank()) { Spacer(Modifier.height(5.dp)); Text(n.snippet, color = V30Text2, fontSize = 11.sp, maxLines = 2, overflow = TextOverflow.Ellipsis) }
+            if (n.demand || n.matchedTerm.isNotBlank()) {
+                Spacer(Modifier.height(8.dp))
+                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                    if (n.demand) V30Badge("DEMANDA", V30Amber)
+                    if (n.matchedTerm.isNotBlank()) V30Badge(n.matchedTerm, V30Accent)
+                }
+            }
+            Spacer(Modifier.height(9.dp))
+            Row(horizontalArrangement = Arrangement.spacedBy(7.dp)) {
+                OutlinedButton(
+                    onClick = { runCatching { context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(n.link))) } },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp)
+                ) {
+                    Icon(Icons.Outlined.OpenInNew, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Abrir", maxLines = 1, fontSize = 10.5.sp)
+                }
+                OutlinedButton(
+                    onClick = { v30CopyLink(context, "Link da notícia", n.link) },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Accent)
+                ) {
+                    Icon(Icons.Outlined.ContentCopy, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("Copiar link", maxLines = 1, fontSize = 10.2.sp)
+                }
+                OutlinedButton(
+                    onClick = { v30ShareWhatsApp(context, n.title, n.link) },
+                    modifier = Modifier.weight(1f).height(50.dp),
+                    contentPadding = PaddingValues(horizontal = 6.dp),
+                    colors = ButtonDefaults.outlinedButtonColors(contentColor = V30Mint)
+                ) {
+                    Icon(Icons.Outlined.Share, null, modifier = Modifier.size(17.dp))
+                    Spacer(Modifier.width(4.dp))
+                    Text("WhatsApp", maxLines = 1, fontSize = 10.2.sp)
+                }
+            }
+        }
+    }
+}
+
+private fun v30CopyLink(context: Context, label: String, link: String) {
+    val value = link.trim()
+    if (value.isBlank()) {
+        android.widget.Toast.makeText(context, "Link indisponível", android.widget.Toast.LENGTH_SHORT).show()
+        return
+    }
+    context.getSystemService(android.content.ClipboardManager::class.java)
+        ?.setPrimaryClip(android.content.ClipData.newPlainText(label, value))
+    android.widget.Toast.makeText(context, "Link copiado", android.widget.Toast.LENGTH_SHORT).show()
+}
+
+private fun v30ShareWhatsApp(context: Context, title: String, link: String) {
+    val message = listOf(title.trim(), link.trim()).filter { it.isNotBlank() }.joinToString("\n")
+    if (message.isBlank()) return
+
+    fun shareIntent(packageName: String? = null) = Intent(Intent.ACTION_SEND).apply {
+        type = "text/plain"
+        putExtra(Intent.EXTRA_TEXT, message)
+        packageName?.let(::setPackage)
+    }
+
+    // Prioriza WhatsApp comum, depois WhatsApp Business. Se nenhum estiver instalado,
+    // abre o seletor padrão do Android sem perder o título + link.
+    if (runCatching { context.startActivity(shareIntent("com.whatsapp")) }.isSuccess) return
+    if (runCatching { context.startActivity(shareIntent("com.whatsapp.w4b")) }.isSuccess) return
+    runCatching {
+        context.startActivity(Intent.createChooser(shareIntent(), "Compartilhar link"))
+    }
+}
+
+@Composable
+private fun V30Metric(label: String, value: String, icon: ImageVector, color: Color, modifier: Modifier) {
+    Surface(color = V30Surface, shape = RoundedCornerShape(14.dp), tonalElevation = 1.dp, border = BorderStroke(1.dp, V30Divider), modifier = modifier) {
+        Column(Modifier.padding(14.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Surface(color = color.copy(alpha = .10f), shape = RoundedCornerShape(9.dp)) {
+                    Box(Modifier.size(34.dp), contentAlignment = Alignment.Center) {
+                        Icon(icon, null, tint = color, modifier = Modifier.size(18.dp))
+                    }
+                }
+                Spacer(Modifier.weight(1f))
+                Text(value, color = color, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
+            }
+            Spacer(Modifier.height(8.dp))
+            Text(label, color = V30Text2, fontSize = 10.8.sp, fontWeight = FontWeight.SemiBold)
+        }
+    }
+}
+
+@Composable
+private fun V30SmallStat(label: String, value: String, color: Color, modifier: Modifier) {
+    Surface(color = color.copy(alpha = .08f), shape = RoundedCornerShape(10.dp), modifier = modifier) {
+        Column(Modifier.padding(vertical = 7.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(value, color = color, fontSize = 15.sp, fontWeight = FontWeight.ExtraBold)
+            Text(label, color = V30Text2, fontSize = 8.8.sp, maxLines = 1)
+        }
+    }
+}
+
+@Composable
+private fun V30Segment(label: String, icon: ImageVector, selected: Boolean, modifier: Modifier, onClick: () -> Unit) {
+    Surface(color = if (selected) V30Selected else V30Surface, shape = RoundedCornerShape(12.dp), border = BorderStroke(1.dp, if (selected) V30Accent.copy(alpha = .45f) else V30Divider), modifier = modifier.height(42.dp).clickable(onClick = onClick)) {
+        Row(horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = if (selected) V30Accent else V30Text2, modifier = Modifier.size(18.dp)); Spacer(Modifier.width(6.dp)); Text(label, color = if (selected) V30Accent else V30Text2, fontSize = 11.5.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium)
+        }
+    }
+}
+
+@Composable
+private fun V30Chip(label: String, selected: Boolean, onClick: () -> Unit) {
+    Surface(color = if (selected) V30Accent.copy(alpha = .14f) else V30Surface, shape = RoundedCornerShape(11.dp), border = BorderStroke(1.dp, if (selected) V30Accent.copy(alpha = .40f) else V30Divider), modifier = Modifier.height(34.dp).clickable(onClick = onClick)) {
+        Box(Modifier.padding(horizontal = 11.dp), contentAlignment = Alignment.Center) { Text(label, color = if (selected) V30Accent else V30Text2, fontSize = 11.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Medium) }
+    }
+}
+
+@Composable
+private fun V30Badge(label: String, color: Color) {
+    Surface(color = color.copy(alpha = .12f), shape = RoundedCornerShape(8.dp), border = BorderStroke(1.dp, color.copy(alpha = .28f))) {
+        Text(label, color = color, fontSize = 9.5.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+    }
+}
+
+@Composable
+private fun V30Empty(title: String, subtitle: String) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 28.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(Icons.Outlined.SearchOff, null, tint = V30Accent, modifier = Modifier.size(28.dp)); Spacer(Modifier.height(8.dp)); Text(title, fontWeight = FontWeight.Bold); Text(subtitle, color = V30Text2, fontSize = 11.sp)
+    }
+}
+
+private fun v401InRun(capturedAt: Long, startedAt: Long, completedAt: Long): Boolean {
+    if (capturedAt <= 0L || startedAt <= 0L) return false
+    val safeEnd = completedAt.takeIf { it >= startedAt } ?: return false
+    return capturedAt in startedAt..(safeEnd + 5_000L)
+}
+
+private fun v30DateTime(ms: Long): String = if (ms <= 0) "—" else SimpleDateFormat("dd/MM HH:mm", Locale("pt", "BR")).format(Date(ms))
+private fun v30ParseDateTime(date: String, time: String): Long? = runCatching {
+    SimpleDateFormat("dd/MM/yyyy HH:mm", Locale("pt", "BR")).apply { isLenient = false }.parse("$date $time")?.time
+}.getOrNull()
