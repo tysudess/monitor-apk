@@ -1,20 +1,21 @@
-name: Android APK
+name: Build e Release Android v4.1.0
 
 on:
   push:
-    branches: [ main, design-v4.2.0 ]
-  pull_request:
-    branches: [ main ]
+    branches: ["main"]
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
-  build:
+  build-release:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up Java 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -23,13 +24,30 @@ jobs:
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.11.1'
 
-      - name: Build debug APK
+      - name: Build installable APK sem chave privada
         run: gradle :app:assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Preparar APK
+        run: cp app/build/outputs/apk/debug/app-debug.apk monitor-de-noticias-v4.1.0-layout-v40-dev.apk
+
+      - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: monitor-de-noticias-v4.2.0-dev
-          path: app/build/outputs/apk/debug/app-debug.apk
+          name: monitor-de-noticias-v4.1.0-layout-v40-dev
+          path: monitor-de-noticias-v4.1.0-layout-v40-dev.apk
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Criar ou atualizar release
+        if: github.ref == 'refs/heads/main'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v4.1.0-layout-v40
+          name: Monitor de Notícias Android v4.1.0 - Layout V40
+          body: |
+            Build baseada no código-fonte original v4.1.0 com a Home no layout azul de referência.
+            APK compilado sem a chave privada do projeto, usando assinatura debug do Android.
+          files: monitor-de-noticias-v4.1.0-layout-v40-dev.apk
+          make_latest: true
