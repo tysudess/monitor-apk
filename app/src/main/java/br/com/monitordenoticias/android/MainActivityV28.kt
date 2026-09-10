@@ -149,7 +149,7 @@ private fun V28TopBar(section: V28Section, onMore: () -> Unit) {
             Box(
                 Modifier
                     .fillMaxWidth()
-                    .height(182.dp)
+                    .height(194.dp)
                     .background(
                         Brush.verticalGradient(
                             listOf(Color(0xFF082952), Color(0xFF07111F), Color(0xFF05101D))
@@ -162,9 +162,9 @@ private fun V28TopBar(section: V28Section, onMore: () -> Unit) {
                     contentDescription = null,
                     contentScale = ContentScale.Crop,
                     modifier = Modifier
-                        .align(Alignment.TopEnd)
-                        .width(208.dp)
-                        .height(100.dp)
+                        .align(Alignment.BottomEnd)
+                        .width(168.dp)
+                        .height(78.dp)
                         .clip(RoundedCornerShape(14.dp))
                 )
                 Column(Modifier.fillMaxSize()) {
@@ -178,7 +178,7 @@ private fun V28TopBar(section: V28Section, onMore: () -> Unit) {
                         )
                         Spacer(Modifier.width(12.dp))
                         Column(Modifier.weight(1f)) {
-                            Text("Monitor de Notícias", fontSize = 17.sp, lineHeight = 19.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
+                            Text("Monitor de Notícias", fontSize = 16.5.sp, lineHeight = 19.sp, fontWeight = FontWeight.ExtraBold, color = Color.White)
                             Text("Inteligência de mídia em tempo real", color = Color(0xFFB9CDE3), fontSize = 10.8.sp)
                         }
                         Column(horizontalAlignment = Alignment.End) {
@@ -213,9 +213,9 @@ private fun V28TopBar(section: V28Section, onMore: () -> Unit) {
                     Text(
                         "VIGILÂNCIA  •  ANÁLISE  •  INFORMAÇÃO  •  DECISÃO",
                         color = Color(0xFF77B7FF),
-                        fontSize = 8.8.sp,
+                        fontSize = 8.sp,
                         fontWeight = FontWeight.Medium,
-                        letterSpacing = 1.2.sp,
+                        letterSpacing = 0.8.sp,
                         lineHeight = 10.sp
                     )
                 }
