@@ -202,7 +202,7 @@ private fun V40MonitoringCard(active: Boolean, busy: Boolean, subtitle: String, 
             verticalAlignment = Alignment.CenterVertically
         ) {
             V40RadarGraphic()
-            Spacer(Modifier.width(16.dp))
+            Spacer(Modifier.width(10.dp))
             Column(Modifier.weight(1f)) {
                 Surface(
                     color = Color(0xFF0E533A),
@@ -226,7 +226,7 @@ private fun V40MonitoringCard(active: Boolean, busy: Boolean, subtitle: String, 
                     Text("Último disparo: $lastRun", color = Color(0xFFB9CDE3), fontSize = 12.5.sp)
                 }
             }
-            Spacer(Modifier.width(14.dp))
+            Spacer(Modifier.width(8.dp))
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Surface(
                     onClick = onRefresh,
@@ -234,10 +234,10 @@ private fun V40MonitoringCard(active: Boolean, busy: Boolean, subtitle: String, 
                     color = Color(0xFF5CAEFF),
                     shape = RoundedCornerShape(99.dp),
                     shadowElevation = 6.dp,
-                    modifier = Modifier.size(92.dp)
+                    modifier = Modifier.size(56.dp)
                 ) {
                     Box(contentAlignment = Alignment.Center) {
-                        Icon(if (busy) Icons.Outlined.HourglassTop else Icons.Outlined.Refresh, null, tint = Color(0xFF051932), modifier = Modifier.size(42.dp))
+                        Icon(if (busy) Icons.Outlined.HourglassTop else Icons.Outlined.Refresh, null, tint = Color(0xFF051932), modifier = Modifier.size(26.dp))
                     }
                 }
                 Spacer(Modifier.height(10.dp))
@@ -251,12 +251,12 @@ private fun V40MonitoringCard(active: Boolean, busy: Boolean, subtitle: String, 
 private fun V40RadarGraphic() {
     Box(
         Modifier
-            .size(144.dp)
+            .size(82.dp)
             .clip(RoundedCornerShape(50))
             .background(Color(0xFF061F34)),
         contentAlignment = Alignment.Center
     ) {
-        Canvas(Modifier.size(122.dp)) {
+        Canvas(Modifier.size(68.dp)) {
             val c = center
             drawCircle(color = Color(0xFF0C6B71), radius = size.minDimension / 2f, style = Stroke(width = 6f))
             drawCircle(color = Color(0xFF18D7B4).copy(alpha = .68f), radius = size.minDimension / 2.8f, style = Stroke(width = 5f))
@@ -277,22 +277,22 @@ private fun V40MetricCard(title: String, value: String, footer: String, icon: Im
         border = BorderStroke(1.dp, color.copy(alpha = .38f)),
         modifier = modifier
     ) {
-        Row(Modifier.padding(14.dp), verticalAlignment = Alignment.CenterVertically) {
+        Row(Modifier.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
             Box(
-                Modifier.size(72.dp).clip(RoundedCornerShape(18.dp)).background(color.copy(alpha = .12f)),
+                Modifier.size(40.dp).clip(RoundedCornerShape(14.dp)).background(color.copy(alpha = .12f)),
                 contentAlignment = Alignment.Center
             ) {
-                Icon(icon, null, tint = color, modifier = Modifier.size(34.dp))
+                Icon(icon, null, tint = color, modifier = Modifier.size(24.dp))
             }
-            Spacer(Modifier.width(12.dp))
+            Spacer(Modifier.width(6.dp))
             Column(Modifier.weight(1f)) {
-                Text(title, color = Color.White, fontSize = 12.5.sp, fontWeight = FontWeight.SemiBold, lineHeight = 15.sp)
+                Text(title, color = Color.White, fontSize = 11.sp, fontWeight = FontWeight.SemiBold, lineHeight = 13.sp)
                 Spacer(Modifier.height(2.dp))
-                Text(value, color = color, fontSize = 31.sp, fontWeight = FontWeight.ExtraBold)
+                Text(value, color = color, fontSize = 28.sp, fontWeight = FontWeight.ExtraBold)
                 Spacer(Modifier.height(4.dp))
                 Text(footer, color = if (footer.contains("Sem")) Color(0xFF93A9C0) else Color(0xFF42F3B8), fontSize = 11.sp, fontWeight = FontWeight.SemiBold)
             }
-            Icon(Icons.Outlined.ChevronRight, null, tint = Color(0xFFA5C9F5), modifier = Modifier.size(22.dp))
+            Icon(Icons.Outlined.ChevronRight, null, tint = Color(0xFFA5C9F5), modifier = Modifier.size(16.dp))
         }
     }
 }
@@ -339,10 +339,10 @@ private fun V40TinyStat(value: String, label: String, color: Color, modifier: Mo
         border = BorderStroke(1.dp, color.copy(alpha = .26f)),
         modifier = modifier
     ) {
-        Column(Modifier.padding(horizontal = 12.dp, vertical = 12.dp), horizontalAlignment = Alignment.Start) {
-            Text(value, color = color, fontSize = 24.sp, fontWeight = FontWeight.ExtraBold)
+        Column(Modifier.padding(horizontal = 8.dp, vertical = 10.dp), horizontalAlignment = Alignment.Start) {
+            Text(value, color = color, fontSize = 22.sp, fontWeight = FontWeight.ExtraBold)
             Spacer(Modifier.height(2.dp))
-            Text(label, color = Color(0xFFD7E6F6), fontSize = 10.5.sp, lineHeight = 13.sp)
+            Text(label, color = Color(0xFFD7E6F6), fontSize = 9.5.sp, lineHeight = 11.5.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
         }
     }
 }
